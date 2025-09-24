@@ -9,14 +9,20 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.evanston.clearskin"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.evanston.clearskin"
     },
     "web": {
       "bundler": "metro",
@@ -42,10 +48,24 @@
           "recordAudioAndroid": true
         }
       ],
-      "expo-secure-store"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to analyze your acne."
+        }
+      ],
+      "expo-secure-store",
+      "onnxruntime-react-native",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6fbb9a61-e124-4696-89da-78d4bfd3fbdc"
+      }
     }
   }
 }
