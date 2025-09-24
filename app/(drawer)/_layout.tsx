@@ -42,8 +42,8 @@ export default function DrawerLayout() {
             <Drawer.Screen
                 name="findProducts"
                 options={{
-                    drawerLabel: 'Find Acne Products',
-                    title: 'Find Acne Produtcs',
+                    drawerLabel: 'AI-Recommended Products',
+                    title: 'AI-Recommended Products',
                 }}
             />
         </Drawer>
