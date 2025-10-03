@@ -4,7 +4,7 @@ import { TouchableOpacity, StyleSheet, View } from "react-native";
 import { Colors } from '@/constants/Colors';
 import { ThemedView } from '@/components/ThemedView';
 import { useThemeColor } from '@/hooks/useThemeColor';
-import { ScanFace, Droplets, Sun, Clock, Zap, Menu } from 'lucide-react-native'; 
+import { ScanFace, Droplets, Sun, Clock, Zap } from 'lucide-react-native'; 
 import { auth } from '@/firebaseConfig';
 import { useRef, useEffect, useState} from 'react';
 
@@ -142,7 +142,6 @@ const styles = StyleSheet.create({
         marginBottom: 40,
     },
     subtitleText: {
-        opacity: 0.7,
         marginBottom: 32,
     },
     scanButton: {

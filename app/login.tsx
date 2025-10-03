@@ -24,7 +24,7 @@ export default function LoginScreen() {
         }
         signInWithEmailAndPassword(auth, email, password)
             .then(() => {
-                router.replace('/(drawer)/overview')
+                router.replace('/(drawer)/fixRoutine')
             })
             .catch((error) => {
                 setError(error.message)

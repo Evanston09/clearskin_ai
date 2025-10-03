@@ -12,7 +12,7 @@ export default function Index() {
         const subscriber = onAuthStateChanged(auth, (user) => {
             if (user) {
                 setIsNavigating(true);
-                router.replace('/(drawer)/overview');
+                router.replace('/(drawer)/fixRoutine');
             } else {
                 setIsNavigating(true);
                 router.replace('/login');

@@ -4,7 +4,6 @@ import { Drawer } from 'expo-router/drawer';
 export default function DrawerLayout() {
     return (
         <Drawer
-            defaultStatus="open"
             screenOptions={{
                 drawerActiveTintColor: Colors.primary_700,
                 drawerInactiveTintColor: Colors.primary_100,

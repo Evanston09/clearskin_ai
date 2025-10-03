@@ -105,7 +105,7 @@ const Product = ({ productInfo }: ProductInfoProps) => {
           <ThemedText type="title" style={styles.title}>
             {productInfo.name}
           </ThemedText>
-          <ThemedText style={styles.description}>
+          <ThemedText type="subtitle" style={styles.description}>
             {productInfo.description}
           </ThemedText>
         </View>
@@ -166,10 +166,9 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: 14,
-    opacity: 0.7,
   },
   buyButton: {
-    backgroundColor: Colors.primary_700,
+    backgroundColor: Colors.primary_900,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
