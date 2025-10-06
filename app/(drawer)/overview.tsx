@@ -1,16 +1,74 @@
 import { ThemedText } from '@/components/ThemedText';
 import PagerView from 'react-native-pager-view';
-import { TouchableOpacity, StyleSheet, View } from "react-native";
+import { TouchableOpacity, StyleSheet, View, ScrollView } from "react-native";
 import { Colors } from '@/constants/Colors';
 import { ThemedView } from '@/components/ThemedView';
 import { useThemeColor } from '@/hooks/useThemeColor';
-import { ScanFace, Droplets, Sun, Clock, Zap } from 'lucide-react-native'; 
+import { ScanFace, Droplets, Sun, Clock, Zap } from 'lucide-react-native';
 import { auth } from '@/firebaseConfig';
 import { useRef, useEffect, useState} from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
+
+type Results = {
+    id: string, 
+    date: string,
+    detections: Detection[]
+    quizAnswers?: Record<string, string>
+}
+
+type Detection = {
+    centerX: number,
+    centerY: number,
+    width: number,
+    height: number,
+    // Also provide corner coordinates for drawing
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    // Confidence and class
+    confidence: number,
+    classIndex: number,
+    acneType: string
+
+}
 
 export default function Overview() {
     const textColor = useThemeColor({}, 'text');
     const pagerRef = useRef<PagerView | null>(null);
+
+    const [results, setResults] = useState<Results[] | null>(null);
+    useEffect(() => {
+        async function getRecentDetections() {
+            const rawDetectionList = await AsyncStorage.getItem('detections')
+            if (rawDetectionList === null) {
+                return 
+            }
+            const detectionList: string[] = JSON.parse(rawDetectionList); 
+            
+            const detectionPromises = detectionList.map(async (id) => {
+                const rawDetection = await AsyncStorage.getItem(id)
+
+                if (!rawDetection) {
+                    return []
+                }
+
+                const detection: Results = JSON.parse(rawDetection)
+                return detection
+            })
+
+            const detections = await Promise.all(detectionPromises);
+            const flatDetections = detections.flat();
+
+            // Get 3 most recent scans
+            const recentScans = flatDetections.slice(-3).reverse();
+
+            setResults(recentScans)
+        }
+
+        getRecentDetections()
+    }, [])
     const acneTips = [
         {
             id: 1,
@@ -59,8 +117,8 @@ export default function Overview() {
 
     return (
         <ThemedView style={styles.container}>
+            <ScrollView>
             <View style={styles.upperSection}>
-                {/* Protected routes */}
                 <ThemedText type='title'>Welcome back {auth.currentUser?.displayName}!</ThemedText>
                 <ThemedText type='subtitle' style={styles.subtitleText}>
                     ClearSkin AI Is Here To Help!
@@ -76,9 +134,28 @@ export default function Overview() {
 
             <View style={styles.recentSection}>
                 <ThemedText style={styles.sectionHeading}>Recent Scans</ThemedText>
-                <ThemedText style={styles.emptyText}>
-                    Ready for your first scan?
-                </ThemedText>
+                {results && results.length > 0 ? (
+                    <View style={styles.scansList}>
+                        {results.map((result) => (
+                            <TouchableOpacity
+                                key={result.id}
+                                style={styles.scanItem}
+                                onPress={() => router.push({ pathname: '/detectionDetails', params: { id: result.id } })}
+                            >
+                                <ThemedText type="defaultSemiBold">
+                                    {new Date(result.date).toLocaleDateString()}
+                                </ThemedText>
+                                <ThemedText type="subtitle" style={styles.scanCount}>
+                                    {result.detections.length} spot{result.detections.length !== 1 ? 's' : ''} detected
+                                </ThemedText>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                ) : (
+                    <ThemedText style={styles.emptyText}>
+                        Ready for your first scan?
+                    </ThemedText>
+                )}
             </View>
 
             <View style={styles.recentSection}>
@@ -103,6 +180,7 @@ export default function Overview() {
                     })}
                 </PagerView>
             </View>
+            </ScrollView>
         </ThemedView>
     );
 }
@@ -134,7 +212,7 @@ const styles = StyleSheet.create({
         opacity: .7
     },
     container: {
-        paddingVertical: 16,
+        paddingVertical: 12, 
         flex: 1,
     },
     upperSection: {
@@ -176,5 +254,18 @@ const styles = StyleSheet.create({
         fontWeight: '400',
         textAlign: 'center',
         marginTop: 8,
+    },
+    scansList: {
+        paddingHorizontal: 20,
+        marginTop: 8,
+    },
+    scanItem: {
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.primary_500,
+    },
+    scanCount: {
+        fontSize: 14,
+        marginTop: 4,
     },
 });

@@ -3,6 +3,7 @@ import { Asset } from 'expo-asset'
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { ThemedView } from '@/components/ThemedView';
+import { File, Paths } from 'expo-file-system';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useEffect, useState } from 'react';
 import { Alert, Button, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -15,6 +16,7 @@ import { router } from 'expo-router';
 type Detections = {
     id: string,
     date: Date,
+    imageUri: string,
     detections:Detection[]
 }
 
@@ -105,9 +107,15 @@ export default function Scan() {
                 const confidenceThreshold = 0.5;
 
                 const id = Crypto.randomUUID();
+
+                const tempFile = new File(result.assets[0].uri);
+                const permanentFile = new File(Paths.document, `${id}.jpg`);
+                tempFile.copy(permanentFile);
+
                 const detectionObject = {
                     id,
                     date: new Date(),
+                    imageUri: permanentFile.uri,
                     detections: [] as Detection[]
                 }
 
