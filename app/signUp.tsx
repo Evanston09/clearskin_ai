@@ -39,7 +39,7 @@ export default function SignUp() {
                 source={require('@/assets/images/clearskin_logo.jpg')}
                 style={styles.logo}
             />
-                <ThemedText type="title">Welcome to Clearskin</ThemedText>
+                <ThemedText type="title">Welcome to ClearSkin AI</ThemedText>
                 <ThemedText style={styles.subtitle} type="subtitle">Create new account</ThemedText>
                     <TextInput
                         style={[styles.input, { color: textColor }]}

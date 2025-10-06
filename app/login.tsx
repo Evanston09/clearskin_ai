@@ -24,7 +24,7 @@ export default function LoginScreen() {
         }
         signInWithEmailAndPassword(auth, email, password)
             .then(() => {
-                router.replace('/(drawer)/fixRoutine')
+                router.replace('/(drawer)/acneType')
             })
             .catch((error) => {
                 setError(error.message)
@@ -38,7 +38,7 @@ export default function LoginScreen() {
                 source={require('@/assets/images/clearskin_logo.jpg')}
                 style={styles.logo}
             />
-                <ThemedText type="title">Welcome to Clearskin</ThemedText>
+                <ThemedText type="title">Welcome to Clearskin AI</ThemedText>
                 <ThemedText style={styles.subtitle} type="subtitle">Sign in to your account</ThemedText>
                     <TextInput
                         style={[styles.input, { color: textColor }]}

@@ -22,8 +22,7 @@ export default function Quiz() {
     const options = Object.keys(currentQuestion.options);
 
     const nextQuestion = async function() {
-        console.log(selectedAnswer)
-        if (!selectedAnswer) {
+        if (selectedAnswer === null) {
             setError("No answer selected");
             return;
         }
@@ -38,7 +37,23 @@ export default function Quiz() {
         setSelectedAnswer(null);
 
         if (questionNumber + 1 === questionData.length) {
-            await AsyncStorage.setItem('quiz-answers', JSON.stringify(newAnswers));
+            const rawListIds = await AsyncStorage.getItem('detections');
+            if (rawListIds) {
+                const listIds: string[] = JSON.parse(rawListIds);
+                const latestDetectionId = listIds[listIds.length - 1];
+                const rawDetection = await AsyncStorage.getItem(latestDetectionId);
+
+                if (rawDetection) {
+                    const detection = JSON.parse(rawDetection);
+                    const compiledResult = {
+                        ...detection,
+                        quizAnswers: newAnswers
+                    };
+
+                    await AsyncStorage.setItem(latestDetectionId, JSON.stringify(compiledResult));
+                }
+            }
+
             router.back();
             return;
         }

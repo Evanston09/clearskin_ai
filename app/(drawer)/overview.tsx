@@ -63,7 +63,7 @@ export default function Overview() {
                 {/* Protected routes */}
                 <ThemedText type='title'>Welcome back {auth.currentUser?.displayName}!</ThemedText>
                 <ThemedText type='subtitle' style={styles.subtitleText}>
-                    Clearskin Is Here To Help!
+                    ClearSkin AI Is Here To Help!
                 </ThemedText>
                 
                 <TouchableOpacity style={styles.scanButton}>
