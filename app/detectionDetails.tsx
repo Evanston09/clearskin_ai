@@ -6,27 +6,44 @@ import { StyleSheet, View, Image, ScrollView, TouchableOpacity } from 'react-nat
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
 import { ArrowLeft } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { questionData } from '@/assets/questions';
 
 type Results = {
     id: string,
     date: string,
     imageUri: string,
-    detections: Detection[]
+    detections: Detection[] | null
+    apiStatus?: 'pending' | 'completed' | 'error'
     quizAnswers?: Record<string, string>
+    imageSize?: {
+        width: number,
+        height: number
+    }
 }
 
 type Detection = {
-    centerX: number,
-    centerY: number,
-    width: number,
-    height: number,
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    confidence: number,
-    classIndex: number,
-    acneType: string
+    box: {
+        x: number,
+        y: number,
+        width: number,
+        height: number
+    },
+    class: string,
+    confidence: number
+}
+
+// Helper function to get color for each acne type
+function getColorForAcneType(acneType: string): string {
+    const colors: Record<string, string> = {
+        'Blackhead': '#FFD700',  // Gold
+        'Whitehead': '#00CED1',  // Dark Turquoise
+        'Papule': '#FF6347',     // Tomato
+        'Pustule': '#FF4500',    // Orange Red
+        'Nodule': '#DC143C',     // Crimson
+        'Cyst': '#8B0000',       // Dark Red
+    };
+    return colors[acneType] || '#00FF00'; // Default to green if type unknown
 }
 
 export default function DetectionDetails() {
@@ -38,6 +55,7 @@ export default function DetectionDetails() {
             if (!id) return;
 
             const rawDetection = await AsyncStorage.getItem(id);
+            console.log(rawDetection)
             if (rawDetection) {
                 const detection: Results = JSON.parse(rawDetection);
                 setResult(detection);
@@ -55,17 +73,27 @@ export default function DetectionDetails() {
         );
     }
 
+    if (!result.detections) {
+        return (
+            <ThemedView style={styles.container}>
+                <ThemedText>Processing detections...</ThemedText>
+            </ThemedView>
+        );
+    }
+
     // Group detections by acne type
     const detectionsByType = result.detections.reduce((acc, detection) => {
-        if (!acc[detection.acneType]) {
-            acc[detection.acneType] = [];
+        const acneType = detection.class;
+        if (!acc[acneType]) {
+            acc[acneType] = [];
         }
-        acc[detection.acneType].push(detection);
+        acc[acneType].push(detection);
         return acc;
     }, {} as Record<string, Detection[]>);
 
     return (
         <ThemedView style={styles.container}>
+            <SafeAreaView>
             <ScrollView style={styles.scrollContainer}>
                 <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
                     <ArrowLeft size={24} color={Colors.primary_900} />
@@ -84,11 +112,13 @@ export default function DetectionDetails() {
                 </ThemedText>
 
                 {result.imageUri && (
-                    <Image
-                        source={{ uri: result.imageUri }}
-                        style={styles.image}
-                        resizeMode="contain"
-                    />
+                    <View style={styles.imageContainer}>
+                        <Image
+                            source={{ uri: result.imageUri }}
+                            style={styles.image}
+                            resizeMode="contain"
+                        />
+                    </View>
                 )}
 
                 <View style={styles.card}>
@@ -124,17 +154,25 @@ export default function DetectionDetails() {
                 {result.quizAnswers && (
                     <View style={styles.quizSection}>
                         <ThemedText type="subtitle" style={styles.sectionTitle}>
-                            Quiz Answers
+                            Recommendations
                         </ThemedText>
-                        {Object.entries(result.quizAnswers).map(([question, answer]) => (
-                            <View key={question} style={styles.quizItem}>
-                                <ThemedText type="subtitle">{question}</ThemedText>
-                                <ThemedText type="defaultSemiBold">{answer}</ThemedText>
-                            </View>
-                        ))}
+                        {Object.entries(result.quizAnswers).map(([questionId, answer]) => {
+                            const question = questionData.find(q => q.id === parseInt(questionId));
+                            const recommendation = question?.options[answer];
+
+                            if (!recommendation) return null;
+
+                            return (
+                                <View key={questionId} style={styles.card}>
+                                    <ThemedText type="subtitle">{question.category}</ThemedText>
+                                    <ThemedText type="defaultSemiBold">{recommendation}</ThemedText>
+                                </View>
+                            );
+                        })}
                     </View>
                 )}
             </ScrollView>
+            </SafeAreaView>
         </ThemedView>
     );
 }
@@ -150,7 +188,6 @@ const styles = StyleSheet.create({
     backButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 20,
         marginBottom: 16,
     },
     backText: {
@@ -163,10 +200,15 @@ const styles = StyleSheet.create({
     date: {
         marginBottom: 16,
     },
-    image: {
+    imageContainer: {
         width: '100%',
         height: 300,
         marginBottom: 24,
+        position: 'relative',
+    },
+    image: {
+        width: '100%',
+        height: '100%',
     },
     sectionTitle: {
         marginBottom: 12,

@@ -6,9 +6,9 @@ import { ThemedView } from '@/components/ThemedView';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { ScanFace, Droplets, Sun, Clock, Zap } from 'lucide-react-native';
 import { auth } from '@/firebaseConfig';
-import { useRef, useEffect, useState} from 'react';
+import { useRef, useEffect, useState, useCallback} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 type Results = {
     id: string, 
@@ -39,36 +39,41 @@ export default function Overview() {
     const pagerRef = useRef<PagerView | null>(null);
 
     const [results, setResults] = useState<Results[] | null>(null);
-    useEffect(() => {
-        async function getRecentDetections() {
-            const rawDetectionList = await AsyncStorage.getItem('detections')
-            if (rawDetectionList === null) {
-                return 
-            }
-            const detectionList: string[] = JSON.parse(rawDetectionList); 
-            
-            const detectionPromises = detectionList.map(async (id) => {
-                const rawDetection = await AsyncStorage.getItem(id)
 
-                if (!rawDetection) {
-                    return []
+    useFocusEffect(
+        useCallback(() => {
+            async function getRecentDetections() {
+                const rawDetectionList = await AsyncStorage.getItem('detections')
+                if (rawDetectionList === null) {
+                    return
                 }
+                const detectionList: string[] = JSON.parse(rawDetectionList);
 
-                const detection: Results = JSON.parse(rawDetection)
-                return detection
-            })
+                const detectionPromises = detectionList.map(async (id) => {
+                    const rawDetection = await AsyncStorage.getItem(id)
 
-            const detections = await Promise.all(detectionPromises);
-            const flatDetections = detections.flat();
+                    if (!rawDetection) {
+                        return []
+                    }
 
-            // Get 3 most recent scans
-            const recentScans = flatDetections.slice(-3).reverse();
+                    const detection: Results = JSON.parse(rawDetection)
+                    return detection
+                })
 
-            setResults(recentScans)
-        }
+                const detections = await Promise.all(detectionPromises);
+                const flatDetections = detections.flat();
 
-        getRecentDetections()
-    }, [])
+                // Get 3 most recent scans
+                const recentScans = flatDetections.slice(-3).reverse();
+
+                console.log('Recent scans:', JSON.stringify(recentScans, null, 2));
+
+                setResults(recentScans)
+            }
+
+            getRecentDetections()
+        }, [])
+    )
     const acneTips = [
         {
             id: 1,
@@ -124,7 +129,7 @@ export default function Overview() {
                     ClearSkin AI Is Here To Help!
                 </ThemedText>
                 
-                <TouchableOpacity style={styles.scanButton}>
+                <TouchableOpacity style={styles.scanButton} onPress={()=>router.push('/(drawer)/acneType')}>
                     <ScanFace size={128} color={textColor} />
                     <ThemedText style={styles.buttonText}>
                         Scan Face
@@ -146,7 +151,7 @@ export default function Overview() {
                                     {new Date(result.date).toLocaleDateString()}
                                 </ThemedText>
                                 <ThemedText type="subtitle" style={styles.scanCount}>
-                                    {result.detections.length} spot{result.detections.length !== 1 ? 's' : ''} detected
+                                    {result.detections ? `${result.detections.length} spot${result.detections.length !== 1 ? 's' : ''} detected` : 'Processing...'}
                                 </ThemedText>
                             </TouchableOpacity>
                         ))}

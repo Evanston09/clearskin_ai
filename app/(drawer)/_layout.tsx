@@ -25,13 +25,6 @@ export default function DrawerLayout() {
                 }}
             />
             <Drawer.Screen
-                name="causesOfAcne"
-                options={{
-                    drawerLabel: 'Causes of Acne',
-                    title: 'Causes of Acne',
-                }}
-            />
-            <Drawer.Screen
                 name="fixRoutine"
                 options={{
                     drawerLabel: 'Fix my Routine',
