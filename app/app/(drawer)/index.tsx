@@ -3,7 +3,6 @@ import PagerView from 'react-native-pager-view';
 import { TouchableOpacity, StyleSheet, View, ScrollView } from "react-native";
 import { Colors } from '@/constants/Colors';
 import { ThemedView } from '@/components/ThemedView';
-import { useThemeColor } from '@/hooks/useThemeColor';
 import { ScanFace, Droplets, Sun, Clock, Zap } from 'lucide-react-native';
 import { useRef, useEffect, useState, useCallback} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,24 +17,12 @@ type Results = {
 }
 
 type Detection = {
-    centerX: number,
-    centerY: number,
-    width: number,
-    height: number,
-    // Also provide corner coordinates for drawing
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    // Confidence and class
-    confidence: number,
-    classIndex: number,
-    acneType: string
-
+    box: { x: number, y: number, width: number, height: number },
+    class: string,
+    confidence: number
 }
 
 export default function Overview() {
-    const textColor = useThemeColor({}, 'text');
     const pagerRef = useRef<PagerView | null>(null);
     const { user } = useSession();
 
@@ -44,30 +31,27 @@ export default function Overview() {
     useFocusEffect(
         useCallback(() => {
             async function getRecentDetections() {
-                const rawDetectionList = await AsyncStorage.getItem('detections')
-                if (rawDetectionList === null) {
-                    return
+                try {
+                    const rawDetectionList = await AsyncStorage.getItem('detections')
+                    if (rawDetectionList === null) return;
+
+                    const detectionList: string[] = JSON.parse(rawDetectionList);
+                    const uniqueIds = [...new Set(detectionList)];
+
+                    const detectionPromises = uniqueIds.map(async (id) => {
+                        const rawDetection = await AsyncStorage.getItem(id)
+                        if (!rawDetection) return []
+                        const detection: Results = JSON.parse(rawDetection)
+                        return detection
+                    })
+
+                    const detections = await Promise.all(detectionPromises);
+                    const flatDetections = detections.flat();
+                    const recentScans = flatDetections.slice(-3).reverse();
+                    setResults(recentScans)
+                } catch {
+                    setResults([]);
                 }
-                const detectionList: string[] = JSON.parse(rawDetectionList);
-
-                const detectionPromises = detectionList.map(async (id) => {
-                    const rawDetection = await AsyncStorage.getItem(id)
-
-                    if (!rawDetection) {
-                        return []
-                    }
-
-                    const detection: Results = JSON.parse(rawDetection)
-                    return detection
-                })
-
-                const detections = await Promise.all(detectionPromises);
-                const flatDetections = detections.flat();
-
-                // Get 3 most recent scans
-                const recentScans = flatDetections.slice(-3).reverse();
-
-                setResults(recentScans)
             }
 
             getRecentDetections()
@@ -121,15 +105,15 @@ export default function Overview() {
 
     return (
         <ThemedView style={styles.container}>
-            <ScrollView>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 40, paddingBottom: 32 }}>
             <View style={styles.upperSection}>
-                <ThemedText type='title'>Welcome back {user?.displayName}!</ThemedText>
+                <ThemedText type='title'>Welcome back {user?.displayName ?? 'there'}!</ThemedText>
                 <ThemedText type='subtitle' style={styles.subtitleText}>
                     DermaSnap Is Here To Help!
                 </ThemedText>
                 
                 <TouchableOpacity style={styles.scanButton} onPress={()=>router.push('/(drawer)/acneType')}>
-                    <ScanFace size={128} color="#fff" />
+                    <ScanFace size={96} color="#fff" />
                     <ThemedText style={styles.buttonText} lightColor="#fff" darkColor="#fff">
                         Scan Face
                     </ThemedText>
@@ -216,28 +200,26 @@ const styles = StyleSheet.create({
         opacity: .7
     },
     container: {
-        paddingVertical: 12, 
         flex: 1,
     },
     upperSection: {
         alignItems: 'center',
-        marginBottom: 40,
+        marginBottom: 24,
     },
     subtitleText: {
-        marginBottom: 32,
+        marginBottom: 24,
     },
     scanButton: {
-        width: 256,
-        height: 256,
-        borderRadius: 128,
+        width: 220,
+        height: 220,
+        borderRadius: 110,
         backgroundColor: Colors.primary_700,
         justifyContent: 'center',
         alignItems: 'center',
-        flexDirection: 'column',
     },
     buttonText: {
-        marginTop: 12,
-        fontSize: 32,
+        marginTop: 8,
+        fontSize: 20,
         fontWeight: 'bold',
         textAlign: 'center',
     },
@@ -251,7 +233,6 @@ const styles = StyleSheet.create({
     sectionHeading: {
         fontSize: 20,
         fontWeight: '600',
-        paddingHorizontal: 20,
     },
     emptyText: {
         opacity: 0.7,
@@ -260,7 +241,6 @@ const styles = StyleSheet.create({
         marginTop: 8,
     },
     scansList: {
-        paddingHorizontal: 20,
         marginTop: 8,
     },
     scanItem: {

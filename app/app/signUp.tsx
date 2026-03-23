@@ -1,7 +1,7 @@
 import { ThemedText } from '@/components/ThemedText';
 import { Image } from 'expo-image';
 import { ThemedView } from '@/components/ThemedView';
-import { TouchableOpacity, StyleSheet, TextInput, Alert, Dimensions, View } from "react-native";
+import { TouchableOpacity, StyleSheet, TextInput, Alert } from "react-native";
 import { useEffect, useState } from 'react';
 import { Colors } from '@/constants/Colors';
 import { useThemeColor } from '@/hooks/useThemeColor';
@@ -12,7 +12,7 @@ export default function SignUp() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [username, setUsername] = useState('')
-    const [error, setError] = useState<String | null>(null)
+    const [error, setError] = useState<string | null>(null)
     const textColor = useThemeColor({}, 'text');
     const { signUp } = useSession();
 
@@ -28,7 +28,7 @@ export default function SignUp() {
             await signUp(email, password, username);
             // Auto-navigation via _layout.tsx when user state changes
         } catch (error: any) {
-            setError(error.message);
+            setError(error?.message ?? 'Something went wrong. Please try again.');
         }
     }
 
@@ -83,7 +83,7 @@ export default function SignUp() {
                     <ThemedText type="defaultSemiBold" style={styles.extraText}>Sign In</ThemedText>
                 </TouchableOpacity>
                 
-                <TouchableOpacity>
+                <TouchableOpacity onPress={() => Alert.alert('Forgot Password', 'Please contact support to reset your password.')}>
                     <ThemedText type="defaultSemiBold" style={styles.extraText}>
                         Forgot Password?
                     </ThemedText>

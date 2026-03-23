@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "me.evankim.dermasnap",
+      "bundleIdentifier": "sa.dermasnap",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

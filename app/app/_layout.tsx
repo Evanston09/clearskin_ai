@@ -12,11 +12,11 @@ import React from 'react';
 import * as Sentry from '@sentry/react-native';
 
 Sentry.init({
-  dsn: 'https://70c19d388a86411c59110e45001b5976@o4510439827439616.ingest.us.sentry.io/4510439834255360',
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
 
   // Adds more context data to events (IP address, cookies, user, etc.)
   // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
-  sendDefaultPii: true,
+  sendDefaultPii: false,
 
   // Enable Logs
   enableLogs: true,

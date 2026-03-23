@@ -3,10 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { TouchableOpacity, StyleSheet, ActivityIndicator, View, Alert } from "react-native";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Colors } from '@/constants/Colors';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { questionData }from '@/assets/questions'
+import { questionData } from '@/assets/questions'
 import { Circle, CircleCheck, AlertCircle } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Detection } from './(drawer)/acneType';
@@ -16,19 +16,21 @@ import { Detection } from './(drawer)/acneType';
 // Look at the image size thing
 export default function Quiz() {
     const { imageUri, detectionId } = useLocalSearchParams();
-    let [questionNumber, setQuestionNumber] = useState(0);
-    let [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
-    let [error, setError] = useState<string | null>(null)
-    let [answers, setAnswer] = useState<Record<string, string>>({})
-    let [apiStatus, setApiStatus] = useState<'pending' | 'completed' | 'error'>('pending')
-    let [isWaitingForApi, setIsWaitingForApi] = useState(false)
-    let [apiResults, setApiResults] = useState<{detections: Detection[], imageSize: {width: number, height: number}} | null>(null)
-
+    const [questionNumber, setQuestionNumber] = useState(0);
+    const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+    const [error, setError] = useState<string | null>(null)
+    const [answers, setAnswer] = useState<Record<string, string>>({})
+    const [apiStatus, setApiStatus] = useState<'pending' | 'completed' | 'error'>('pending')
+    const [isWaitingForApi, setIsWaitingForApi] = useState(false)
+    const [apiResults, setApiResults] = useState<{detections: Detection[], imageSize: {width: number, height: number}} | null>(null)
+    const hasSaved = useRef(false);
 
     const currentQuestion = questionData[questionNumber];
     const options = Object.keys(currentQuestion.options);
 
     useEffect(() => {
+        const abortController = new AbortController();
+
         async function callDetectionApi() {
             if (!imageUri || !detectionId) {
                 setApiStatus('error');
@@ -36,7 +38,6 @@ export default function Quiz() {
             }
 
             try {
-                // Create FormData for the API request
                 const formData = new FormData();
                 formData.append('file', {
                     uri: imageUri as string,
@@ -44,14 +45,15 @@ export default function Quiz() {
                     name: `${detectionId}.jpg`,
                 } as any);
 
-                // Call the API
                 const csaiBaseUrl = process.env.EXPO_PUBLIC_CSAI_BASE_URL;
+                if (!csaiBaseUrl) {
+                    throw new Error('EXPO_PUBLIC_CSAI_BASE_URL is not set');
+                }
                 const response = await fetch(`${csaiBaseUrl}/detect`, {
                     method: 'POST',
                     body: formData,
-                    headers: {
-                        'Accept': 'application/json',
-                    },
+                    headers: { 'Accept': 'application/json' },
+                    signal: abortController.signal,
                 });
 
                 if (!response.ok) {
@@ -60,23 +62,27 @@ export default function Quiz() {
 
                 const result = await response.json();
 
-                // Store API results in state
-                setApiResults({
-                    detections: result.detections,
-                    imageSize: result.image_size
-                });
-                setApiStatus('completed');
-
-            } catch (error) {
-                setApiStatus('error');
+                if (!abortController.signal.aborted) {
+                    setApiResults({
+                        detections: result.detections,
+                        imageSize: result.image_size
+                    });
+                    setApiStatus('completed');
+                }
+            } catch (error: any) {
+                if (error.name !== 'AbortError') {
+                    setApiStatus('error');
+                }
             }
         }
 
         callDetectionApi();
+        return () => abortController.abort();
     }, [imageUri, detectionId]);
 
     useEffect(() => {
-        if (isWaitingForApi && apiStatus !== 'pending') {
+        if (isWaitingForApi && apiStatus !== 'pending' && !hasSaved.current) {
+            hasSaved.current = true;
             saveQuizResults(answers);
         }
     }, [apiStatus, isWaitingForApi, answers]);
@@ -110,9 +116,10 @@ export default function Quiz() {
     }
 
     const saveQuizResults = async (finalAnswers: Record<string, string>) => {
-        if (!imageUri || !detectionId) {
+        if (!imageUri || !detectionId || hasSaved.current) {
             return;
         }
+        hasSaved.current = true;
 
         // Create the complete detection object
         const detectionObject = {
@@ -185,6 +192,9 @@ export default function Quiz() {
         <SafeAreaView style={styles.safeArea}>
                 <View style={styles.header}>
                     <View style={styles.headerTop}>
+                        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                            <ThemedText style={styles.questionText}>← Back</ThemedText>
+                        </TouchableOpacity>
                         <ThemedText style={styles.questionText}>
                             Question {questionNumber + 1} of {questionData.length}
                         </ThemedText>
@@ -224,8 +234,8 @@ export default function Quiz() {
 
             <View style={styles.spacer}/>
 
-            <TouchableOpacity>
-                    <ThemedText onPress={nextQuestion} type="defaultSemiBold" style={styles.nextButton}>
+            <TouchableOpacity onPress={nextQuestion}>
+                    <ThemedText type="defaultSemiBold" style={styles.nextButton}>
                         Next
                     </ThemedText>
             </TouchableOpacity>
@@ -278,6 +288,9 @@ const styles = StyleSheet.create({
     },
     header: {
         marginBottom: 16
+    },
+    backButton: {
+        marginRight: 8,
     },
     headerTop: {
         flexDirection: 'row',

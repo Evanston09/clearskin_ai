@@ -62,7 +62,15 @@ export default function DetectionDetails() {
     if (!result.detections) {
         return (
             <ThemedView style={styles.container}>
-                <ThemedText>Processing detections...</ThemedText>
+                <SafeAreaView>
+                    <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                        <ArrowLeft size={24} color={Colors.primary_900} />
+                        <ThemedText type="defaultSemiBold" style={styles.backText}>Back</ThemedText>
+                    </TouchableOpacity>
+                    <ThemedText>
+                        {result.apiStatus === 'error' ? 'Analysis failed. Please try again.' : 'Processing detections...'}
+                    </ThemedText>
+                </SafeAreaView>
             </ThemedView>
         );
     }
@@ -146,7 +154,7 @@ export default function DetectionDetails() {
                             const question = questionData.find(q => q.id === parseInt(questionId));
                             const recommendation = question?.options[answer];
 
-                            if (!recommendation) return null;
+                            if (!recommendation || !question) return null;
 
                             return (
                                 <View key={questionId} style={styles.card}>
@@ -227,11 +235,5 @@ const styles = StyleSheet.create({
     },
     quizSection: {
         marginBottom: 24,
-    },
-    quizItem: {
-        padding: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.primary_500,
-        gap: 4,
     },
 });
