@@ -42,7 +42,7 @@ export default function Scan() {
         async function isFirstTime() {
             const isFirstTime = await AsyncStorage.getItem('first-time');
             if (isFirstTime === null || isFirstTime === 'true') {
-                Alert.alert("First Time", "Seems like its your first time using DermaSnap! Take a picture or upload a photo to get started. Disclaimer: This is not professional medical advice.")
+                Alert.alert("First Time", "Seems like its your first time using ClearSkinAI! Take a picture or upload a photo to get started. Disclaimer: This is not professional medical advice.")
             }
         }
 
