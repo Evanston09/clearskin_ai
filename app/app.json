@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "DermaSnap",
+    "name": "ClearSkinAI",
     "slug": "dermasnap",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "me.evankim.dermasnap",
+      "bundleIdentifier": "sa.dermasnap",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -33,6 +33,12 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.9261126598-msi1a9idvahl6alr7f8aeav42sb6ufk1"
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",

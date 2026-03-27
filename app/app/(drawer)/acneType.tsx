@@ -40,10 +40,9 @@ export default function Scan() {
 
     useEffect(() => {
         async function isFirstTime() {
-            await AsyncStorage.removeItem('quiz-answers');
             const isFirstTime = await AsyncStorage.getItem('first-time');
             if (isFirstTime === null || isFirstTime === 'true') {
-                Alert.alert("First Time", "Seems like its your first time using DermaSnap! Take a picture or upload a photo to get started. Disclaimer: This is not professional medical advice.")
+                Alert.alert("First Time", "Seems like its your first time using ClearSkinAI! Take a picture or upload a photo to get started. Disclaimer: This is not professional medical advice.")
             }
         }
 
@@ -59,7 +58,7 @@ export default function Scan() {
             // Copy image to permanent storage
             const tempFile = new File(imageUri);
             const permanentFile = new File(Paths.document, `${id}.jpg`);
-            await tempFile.copy(permanentFile);
+            tempFile.copy(permanentFile);
 
             await AsyncStorage.setItem('first-time', 'false');
 
@@ -120,7 +119,6 @@ export default function Scan() {
         );
     }
 
-    // Readd later
     function toggleCameraFacing() {
         setFacing(current => (current === 'back' ? 'front' : 'back'));
     }
@@ -134,6 +132,9 @@ export default function Scan() {
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.button} onPress={pickImage}>
                     <ThemedText type="defaultSemiBold" lightColor="#fff" darkColor="#fff">Select Image</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={toggleCameraFacing}>
+                    <ThemedText type="defaultSemiBold" lightColor="#fff" darkColor="#fff">Flip</ThemedText>
                 </TouchableOpacity>
             </View>
         </ThemedView>

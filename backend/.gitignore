@@ -1,2 +1,9 @@
 
 deploy.sh
+
+# Firebase
+GoogleService-Info.plist
+google-services.json
+
+# Xcode project
+*.pbxproj

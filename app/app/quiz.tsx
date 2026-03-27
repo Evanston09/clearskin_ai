@@ -2,12 +2,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { TouchableOpacity, StyleSheet, ActivityIndicator, View, Alert } from "react-native";
-import { useEffect, useState } from 'react';
+import { TouchableOpacity, StyleSheet, ActivityIndicator, View } from "react-native";
+import { useEffect, useState, useRef } from 'react';
 import { Colors } from '@/constants/Colors';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { questionData }from '@/assets/questions'
-import { Circle, CircleCheck, AlertCircle } from 'lucide-react-native';
+import { questionData } from '@/assets/questions'
+import { CircleCheck, AlertCircle, ArrowLeft, ArrowRight } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Detection } from './(drawer)/acneType';
 
@@ -16,19 +16,22 @@ import { Detection } from './(drawer)/acneType';
 // Look at the image size thing
 export default function Quiz() {
     const { imageUri, detectionId } = useLocalSearchParams();
-    let [questionNumber, setQuestionNumber] = useState(0);
-    let [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
-    let [error, setError] = useState<string | null>(null)
-    let [answers, setAnswer] = useState<Record<string, string>>({})
-    let [apiStatus, setApiStatus] = useState<'pending' | 'completed' | 'error'>('pending')
-    let [isWaitingForApi, setIsWaitingForApi] = useState(false)
-    let [apiResults, setApiResults] = useState<{detections: Detection[], imageSize: {width: number, height: number}} | null>(null)
-
+    const [questionNumber, setQuestionNumber] = useState(0);
+    const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+    const [error, setError] = useState<string | null>(null)
+    const [answers, setAnswer] = useState<Record<string, string>>({})
+    const [apiStatus, setApiStatus] = useState<'pending' | 'completed' | 'error'>('pending')
+    const [isWaitingForApi, setIsWaitingForApi] = useState(false)
+    const [apiResults, setApiResults] = useState<{detections: Detection[], imageSize: {width: number, height: number}} | null>(null)
+    const hasSaved = useRef(false);
 
     const currentQuestion = questionData[questionNumber];
     const options = Object.keys(currentQuestion.options);
+    const progress = (questionNumber + 1) / questionData.length;
 
     useEffect(() => {
+        const abortController = new AbortController();
+
         async function callDetectionApi() {
             if (!imageUri || !detectionId) {
                 setApiStatus('error');
@@ -36,7 +39,6 @@ export default function Quiz() {
             }
 
             try {
-                // Create FormData for the API request
                 const formData = new FormData();
                 formData.append('file', {
                     uri: imageUri as string,
@@ -44,14 +46,15 @@ export default function Quiz() {
                     name: `${detectionId}.jpg`,
                 } as any);
 
-                // Call the API
                 const csaiBaseUrl = process.env.EXPO_PUBLIC_CSAI_BASE_URL;
+                if (!csaiBaseUrl) {
+                    throw new Error('EXPO_PUBLIC_CSAI_BASE_URL is not set');
+                }
                 const response = await fetch(`${csaiBaseUrl}/detect`, {
                     method: 'POST',
                     body: formData,
-                    headers: {
-                        'Accept': 'application/json',
-                    },
+                    headers: { 'Accept': 'application/json' },
+                    signal: abortController.signal,
                 });
 
                 if (!response.ok) {
@@ -60,30 +63,34 @@ export default function Quiz() {
 
                 const result = await response.json();
 
-                // Store API results in state
-                setApiResults({
-                    detections: result.detections,
-                    imageSize: result.image_size
-                });
-                setApiStatus('completed');
-
-            } catch (error) {
-                setApiStatus('error');
+                if (!abortController.signal.aborted) {
+                    setApiResults({
+                        detections: result.detections,
+                        imageSize: result.image_size
+                    });
+                    setApiStatus('completed');
+                }
+            } catch (error: any) {
+                if (error.name !== 'AbortError') {
+                    setApiStatus('error');
+                }
             }
         }
 
         callDetectionApi();
+        return () => abortController.abort();
     }, [imageUri, detectionId]);
 
     useEffect(() => {
-        if (isWaitingForApi && apiStatus !== 'pending') {
+        if (isWaitingForApi && apiStatus !== 'pending' && !hasSaved.current) {
+            hasSaved.current = true;
             saveQuizResults(answers);
         }
     }, [apiStatus, isWaitingForApi, answers]);
 
     const nextQuestion = async function() {
         if (selectedAnswer === null) {
-            setError("No answer selected");
+            setError("Please select an answer to continue");
             return;
         }
 
@@ -97,10 +104,9 @@ export default function Quiz() {
         setSelectedAnswer(null);
 
         if (questionNumber + 1 === questionData.length) {
-            // Check if API call is still pending
             if (apiStatus === 'pending') {
                 setIsWaitingForApi(true);
-                return; // Exit early, useEffect will handle saving
+                return;
             }
 
             await saveQuizResults(newAnswers);
@@ -110,11 +116,11 @@ export default function Quiz() {
     }
 
     const saveQuizResults = async (finalAnswers: Record<string, string>) => {
-        if (!imageUri || !detectionId) {
+        if (!imageUri || !detectionId || hasSaved.current) {
             return;
         }
+        hasSaved.current = true;
 
-        // Create the complete detection object
         const detectionObject = {
             id: detectionId as string,
             date: new Date(),
@@ -125,7 +131,6 @@ export default function Quiz() {
             quizAnswers: finalAnswers
         };
 
-        // Store detection ID in the list
         const rawListIds = await AsyncStorage.getItem('detections');
 
         if (rawListIds === null) {
@@ -137,185 +142,245 @@ export default function Quiz() {
             await AsyncStorage.setItem('detections', JSON.stringify(listIds))
         }
 
-        // Save complete detection object
         await AsyncStorage.setItem(detectionId as string, JSON.stringify(detectionObject));
 
         setIsWaitingForApi(false);
         router.push('/(drawer)');
     }
 
-    // Show full-screen loading when waiting for API on quiz completion
     if (isWaitingForApi) {
         if (apiStatus === 'error') {
             return (
-                <ThemedView style={styles.loadingContainer}>
-                    <AlertCircle size={64} color={Colors.error} />
-                    <ThemedText style={styles.loadingMessage}>
-                        Analysis Failed
-                    </ThemedText>
-                    <ThemedText style={styles.loadingSubtext}>
+                <ThemedView style={styles.fullScreenCenter}>
+                    <AlertCircle size={56} color={Colors.error} />
+                    <ThemedText style={styles.fullScreenTitle}>Analysis Failed</ThemedText>
+                    <ThemedText style={styles.fullScreenSub}>
                         We couldn't analyze your image. Please try again.
                     </ThemedText>
-                    <TouchableOpacity
-                        style={styles.errorButton}
-                        onPress={() => router.back()}
-                    >
-                        <ThemedText type="defaultSemiBold" lightColor="#fff" darkColor="#fff">
-                            Go Back
-                        </ThemedText>
+                    <TouchableOpacity style={styles.actionButton} onPress={() => router.back()}>
+                        <ThemedText style={styles.actionButtonText}>Go Back</ThemedText>
                     </TouchableOpacity>
                 </ThemedView>
             );
         }
         return (
-            <ThemedView style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={Colors.primary_600} />
-                <ThemedText style={styles.loadingMessage}>
-                    Analyzing your skin...
-                </ThemedText>
-                <ThemedText style={styles.loadingSubtext}>
-                    This may take a few moments
-                </ThemedText>
+            <ThemedView style={styles.fullScreenCenter}>
+                <ActivityIndicator size="large" color={Colors.primary_700} />
+                <ThemedText style={styles.fullScreenTitle}>Analyzing your skin...</ThemedText>
+                <ThemedText style={styles.fullScreenSub}>This may take a few moments</ThemedText>
             </ThemedView>
         );
     }
 
     return (
-        <ThemedView style={styles.container} >
-        <SafeAreaView style={styles.safeArea}>
+        <ThemedView style={styles.container}>
+            <SafeAreaView style={styles.safeArea}>
+                {/* Header */}
                 <View style={styles.header}>
-                    <View style={styles.headerTop}>
-                        <ThemedText style={styles.questionText}>
-                            Question {questionNumber + 1} of {questionData.length}
-                        </ThemedText>
-                        {apiStatus === 'pending' && (
-                            <View style={styles.loadingIndicator}>
-                                <ActivityIndicator size="small" color={Colors.primary_600} />
-                                <ThemedText style={styles.loadingText}>Processing...</ThemedText>
-                            </View>
-                        )}
-                        {apiStatus === 'error' && (
-                            <View style={styles.loadingIndicator}>
-                                <AlertCircle size={16} color={Colors.error} />
-                                <ThemedText style={[styles.loadingText, { color: Colors.error }]}>
-                                    Analysis failed
-                                </ThemedText>
-                            </View>
-                        )}
-                    </View>
-                    <ThemedText type="title">
-                        {currentQuestion.text}
-                    </ThemedText>
-                </View>
-                {options.map((option, index) => (
-                    <TouchableOpacity
-                        style={styles.optionButton}
-                        key={index}
-                        onPress={() => setSelectedAnswer(index)}
-                    >
-                        <ThemedText>
-                            {option}
-                        </ThemedText>
-                        {selectedAnswer === index ? <CircleCheck fill={Colors.primary_900} />: <Circle color={Colors.primary_500}/>}
+                    <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                        <ArrowLeft size={20} color={Colors.primary_900} />
                     </TouchableOpacity>
-                ))}
-
-            {error && <ThemedText style={styles.error}>{error}</ThemedText>}
-
-            <View style={styles.spacer}/>
-
-            <TouchableOpacity>
-                    <ThemedText onPress={nextQuestion} type="defaultSemiBold" style={styles.nextButton}>
-                        Next
+                    <ThemedText style={styles.stepLabel}>
+                        {questionNumber + 1} / {questionData.length}
                     </ThemedText>
-            </TouchableOpacity>
-        </SafeAreaView>
+                    {apiStatus === 'pending' ? (
+                        <View style={styles.statusChip}>
+                            <ActivityIndicator size="small" color={Colors.primary_700} />
+                            <ThemedText style={styles.statusText}>Scanning...</ThemedText>
+                        </View>
+                    ) : apiStatus === 'error' ? (
+                        <View style={styles.statusChip}>
+                            <AlertCircle size={14} color={Colors.error} />
+                            <ThemedText style={[styles.statusText, { color: Colors.error }]}>Failed</ThemedText>
+                        </View>
+                    ) : (
+                        <View style={styles.statusChip}>
+                            <CircleCheck size={14} color={Colors.primary_700} />
+                            <ThemedText style={styles.statusText}>Done</ThemedText>
+                        </View>
+                    )}
+                </View>
+
+                {/* Progress bar */}
+                <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+                </View>
+
+                {/* Question */}
+                <ThemedText style={styles.questionText}>{currentQuestion.text}</ThemedText>
+
+                {/* Options */}
+                <View style={styles.optionsList}>
+                    {options.map((option, index) => (
+                        <TouchableOpacity
+                            style={[styles.optionButton, selectedAnswer === index && styles.optionSelected]}
+                            key={index}
+                            onPress={() => setSelectedAnswer(index)}
+                            activeOpacity={0.7}
+                        >
+                            <ThemedText style={[styles.optionText, selectedAnswer === index && styles.optionTextSelected]}>
+                                {option}
+                            </ThemedText>
+                            {selectedAnswer === index && (
+                                <CircleCheck size={20} color={Colors.primary_800} fill={Colors.primary_200} />
+                            )}
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
+                {error && <ThemedText style={styles.errorText}>{error}</ThemedText>}
+
+                <View style={styles.spacer} />
+
+                <TouchableOpacity style={styles.nextButton} onPress={nextQuestion} activeOpacity={0.85}>
+                    <ThemedText style={styles.nextButtonText}>
+                        {questionNumber + 1 === questionData.length ? 'Finish' : 'Next'}
+                    </ThemedText>
+                    <ArrowRight size={18} color="#fff" />
+                </TouchableOpacity>
+            </SafeAreaView>
         </ThemedView>
     )
 
 }
 
 const styles = StyleSheet.create({
-    error: {
-        color: Colors.error
-    },
     container: {
         flex: 1,
-        padding: 20
     },
     safeArea: {
-        flex: 1
-    },
-
-    spacer: {
-        flexGrow: 1
-    },
-
-    optionButton: {
-        padding: 15,
-        marginVertical: 8,
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: Colors.primary_900,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-
-    nextButton: {
-        padding: 15,
-        borderRadius: 12,
-        backgroundColor: Colors.primary_900,
-        textAlign: 'center'
-    },
-
-    selectedOption: {
-        backgroundColor: Colors.primary_200
-    },
-
-    questionText: {
-        color: Colors.primary_600,
+        flex: 1,
+        paddingHorizontal: 20,
+        paddingTop: 12,
+        paddingBottom: 24,
     },
     header: {
-        marginBottom: 16
-    },
-    headerTop: {
         flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 8
+        marginBottom: 16,
     },
-    loadingIndicator: {
+    backButton: {
+        padding: 4,
+    },
+    stepLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        opacity: 0.5,
+    },
+    statusChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8
+        gap: 5,
+        backgroundColor: Colors.primary_100,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 20,
     },
-    loadingText: {
+    statusText: {
         fontSize: 12,
-        color: Colors.primary_600
+        fontWeight: '600',
+        color: Colors.primary_700,
     },
-    loadingContainer: {
+    progressTrack: {
+        height: 4,
+        backgroundColor: Colors.primary_200,
+        borderRadius: 2,
+        marginBottom: 28,
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: Colors.primary_700,
+        borderRadius: 2,
+    },
+    questionText: {
+        fontSize: 22,
+        fontWeight: '700',
+        lineHeight: 30,
+        marginBottom: 24,
+    },
+    optionsList: {
+        gap: 10,
+    },
+    optionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 16,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: Colors.primary_300,
+        backgroundColor: 'transparent',
+    },
+    optionSelected: {
+        borderColor: Colors.primary_700,
+        backgroundColor: Colors.primary_100,
+    },
+    optionText: {
+        fontSize: 15,
+        fontWeight: '500',
+        flex: 1,
+    },
+    optionTextSelected: {
+        color: Colors.primary_900,
+        fontWeight: '600',
+    },
+    errorText: {
+        color: Colors.error,
+        fontSize: 13,
+        marginTop: 10,
+    },
+    spacer: {
+        flexGrow: 1,
+    },
+    nextButton: {
+        backgroundColor: Colors.primary_800,
+        paddingVertical: 16,
+        borderRadius: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        shadowColor: Colors.primary_900,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    nextButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    fullScreenCenter: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 20
+        padding: 32,
+        gap: 12,
     },
-    loadingMessage: {
-        fontSize: 18,
-        marginTop: 16,
-        textAlign: 'center'
-    },
-    loadingSubtext: {
-        fontSize: 14,
+    fullScreenTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        textAlign: 'center',
         marginTop: 8,
-        color: Colors.primary_600,
-        textAlign: 'center'
     },
-    errorButton: {
-        marginTop: 24,
-        paddingVertical: 16,
-        paddingHorizontal: 32,
+    fullScreenSub: {
+        fontSize: 14,
+        opacity: 0.55,
+        textAlign: 'center',
+    },
+    actionButton: {
+        marginTop: 12,
         backgroundColor: Colors.primary_700,
-        borderRadius: 12,
-    }
+        paddingVertical: 14,
+        paddingHorizontal: 32,
+        borderRadius: 14,
+    },
+    actionButtonText: {
+        color: '#fff',
+        fontWeight: '700',
+        fontSize: 15,
+    },
 });

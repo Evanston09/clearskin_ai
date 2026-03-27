@@ -1,8 +1,8 @@
 import { ThemedText } from '@/components/ThemedText';
 import { Image } from 'expo-image';
 import { ThemedView } from '@/components/ThemedView';
-import { TouchableOpacity, StyleSheet, TextInput, Alert, Dimensions, View } from "react-native";
-import { useEffect, useState } from 'react';
+import { TouchableOpacity, StyleSheet, TextInput, View, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { useState } from 'react';
 import { Colors } from '@/constants/Colors';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { router } from 'expo-router';
@@ -12,133 +12,270 @@ export default function SignUp() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [username, setUsername] = useState('')
-    const [error, setError] = useState<String | null>(null)
+    const [error, setError] = useState<string | null>(null)
     const textColor = useThemeColor({}, 'text');
-    const { signUp } = useSession();
+    const inputBg = useThemeColor({}, 'cardBackground');
+    const { signUp, signInWithGoogle } = useSession();
 
     const handleAccountCreation = async () => {
         setError(null);
-
         if (!email.trim() || !password.trim() || !username.trim()) {
-            setError('Fill Out All Fields');
+            setError('Please fill out all fields');
             return;
         }
-
         try {
             await signUp(email, password, username);
-            // Auto-navigation via _layout.tsx when user state changes
         } catch (error: any) {
-            setError(error.message);
+            setError(error?.message ?? 'Something went wrong. Please try again.');
         }
     }
 
     return (
         <ThemedView style={styles.container}>
-            <Image
-                source={require('@/assets/images/clearskin_logo.jpg')}
-                style={styles.logo}
-            />
-                <ThemedText type="title">Welcome to DermaSnap</ThemedText>
-                <ThemedText style={styles.subtitle} type="subtitle">Create new account</ThemedText>
-                    <TextInput
-                        style={[styles.input, { color: textColor }]}
-                        placeholderTextColor={textColor}
-                        placeholder="Username"
-                        value={username}
-                        onChangeText={setUsername}
-                    />
-                    <TextInput
-                        style={[styles.input, { color: textColor }]}
-                        placeholderTextColor={textColor}
-                        placeholder="Email"
-                        value={email}
-                        onChangeText={setEmail}
-                    />
-                
-                    <TextInput
-                        style={[styles.input, { color: textColor }]}
-                        placeholderTextColor={textColor}
-                        placeholder="Password"
-                        secureTextEntry
-                        value={password}
-                        onChangeText={setPassword}
-                    />
-                    {error &&
-                        <ThemedText style={styles.error}>
-                            {error}
-                        </ThemedText>
-                    }
-                
-                <TouchableOpacity
-                    style={styles.button}
-                    onPress={handleAccountCreation}
-                    activeOpacity={0.8}
-                >
-                    <ThemedText type="defaultSemiBold" lightColor="#fff" darkColor="#fff">Create Account</ThemedText>
-                </TouchableOpacity>
+            <KeyboardAvoidingView
+                style={styles.inner}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                    <View style={styles.logoSection}>
+                        <Image
+                            source={require('@/assets/images/clearskin_logo.jpg')}
+                            style={styles.logo}
+                        />
+                        <ThemedText style={styles.appName} numberOfLines={1} adjustsFontSizeToFit>ClearSkinAI</ThemedText>
+                        <ThemedText style={styles.tagline}>Create your account to get started</ThemedText>
+                    </View>
 
-                <TouchableOpacity
-                    onPress={() => router.replace('/login')}
-                >
-                    <ThemedText type="defaultSemiBold" style={styles.extraText}>Sign In</ThemedText>
-                </TouchableOpacity>
-                
-                <TouchableOpacity>
-                    <ThemedText type="defaultSemiBold" style={styles.extraText}>
-                        Forgot Password?
-                    </ThemedText>
-                </TouchableOpacity>
+                    <View style={styles.form}>
+                        <ThemedText style={styles.formTitle}>Create account</ThemedText>
+
+                        <View style={styles.inputGroup}>
+                            <ThemedText style={styles.label}>Username</ThemedText>
+                            <TextInput
+                                style={[styles.input, { color: textColor, backgroundColor: inputBg }]}
+                                placeholderTextColor={textColor + '70'}
+                                placeholder="Choose a username"
+                                value={username}
+                                onChangeText={setUsername}
+                                autoCapitalize="none"
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <ThemedText style={styles.label}>Email</ThemedText>
+                            <TextInput
+                                style={[styles.input, { color: textColor, backgroundColor: inputBg }]}
+                                placeholderTextColor={textColor + '70'}
+                                placeholder="you@example.com"
+                                value={email}
+                                onChangeText={setEmail}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <ThemedText style={styles.label}>Password</ThemedText>
+                            <TextInput
+                                style={[styles.input, { color: textColor, backgroundColor: inputBg }]}
+                                placeholderTextColor={textColor + '70'}
+                                placeholder="••••••••"
+                                secureTextEntry
+                                value={password}
+                                onChangeText={setPassword}
+                            />
+                        </View>
+
+                        {error && (
+                            <View style={styles.errorBox}>
+                                <ThemedText style={styles.errorText}>{error}</ThemedText>
+                            </View>
+                        )}
+
+                        <TouchableOpacity
+                            style={styles.button}
+                            onPress={handleAccountCreation}
+                            activeOpacity={0.85}
+                        >
+                            <ThemedText style={styles.buttonText} lightColor="#fff" darkColor="#fff">
+                                Create Account
+                            </ThemedText>
+                        </TouchableOpacity>
+
+                        <View style={styles.divider}>
+                            <View style={styles.dividerLine} />
+                            <ThemedText style={styles.dividerText}>or</ThemedText>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.googleButton}
+                            onPress={async () => {
+                                setError(null);
+                                try {
+                                    await signInWithGoogle();
+                                } catch (e: any) {
+                                    if (e?.code !== 'SIGN_IN_CANCELLED') {
+                                        setError(e?.message ?? 'Google Sign-In failed');
+                                    }
+                                }
+                            }}
+                            activeOpacity={0.85}
+                        >
+                            <Image
+                                source={require('@/assets/images/google-logo.png')}
+                                style={styles.googleIcon}
+                            />
+                            <ThemedText style={styles.googleButtonText}>Continue with Google</ThemedText>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.replace('/login')}>
+                            <ThemedText style={styles.secondaryButtonText}>Sign In Instead</ThemedText>
+                        </TouchableOpacity>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </ThemedView>
     )
 }
 
 const styles = StyleSheet.create({
-    error: {
-        color: Colors.error,
-        marginBottom: 12
-    },
-    subtitle: {
-        marginBottom: 24
-    },
     container: {
         flex: 1,
+    },
+    inner: {
+        flex: 1,
+    },
+    scrollContent: {
+        flexGrow: 1,
         justifyContent: 'center',
+        paddingHorizontal: 24,
+        paddingVertical: 40,
+    },
+    logoSection: {
         alignItems: 'center',
-        padding: 24,
+        marginBottom: 32,
+    },
+    logo: {
+        width: 90,
+        height: 90,
+        borderRadius: 45,
+        marginBottom: 14,
+    },
+    appName: {
+        fontSize: 32,
+        fontWeight: '800',
+        color: Colors.primary_900,
+        letterSpacing: -0.5,
+        marginTop: 6,
+        lineHeight: 44,
+        includeFontPadding: false,
+    },
+    tagline: {
+        fontSize: 14,
+        opacity: 0.55,
+        marginTop: 4,
+        textAlign: 'center',
+    },
+    form: {
+        width: '100%',
+    },
+    formTitle: {
+        fontSize: 22,
+        fontWeight: '700',
+        marginBottom: 20,
+    },
+    inputGroup: {
+        marginBottom: 14,
+    },
+    label: {
+        fontSize: 13,
+        fontWeight: '600',
+        opacity: 0.7,
+        marginBottom: 6,
+        letterSpacing: 0.3,
     },
     input: {
         height: 52,
-        borderWidth: 1,
-        borderColor: Colors.primary_700,
         borderRadius: 12,
         paddingHorizontal: 16,
         fontSize: 16,
-        width: '100%', 
-        marginBottom: 16,
+        width: '100%',
+    },
+    errorBox: {
+        backgroundColor: '#FEE2E2',
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 14,
+    },
+    errorText: {
+        color: Colors.error,
+        fontSize: 14,
     },
     button: {
         height: 52,
-        marginBottom: 16,
-        width: '100%',
-        backgroundColor: Colors.primary_700,
-        borderRadius: 12,
+        backgroundColor: Colors.primary_800,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 4,
+        shadowColor: Colors.primary_900,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    buttonText: {
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: 20,
+        gap: 10,
+    },
+    dividerLine: {
+        flex: 1,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: Colors.primary_300,
+    },
+    dividerText: {
+        fontSize: 13,
+        opacity: 0.5,
+    },
+    googleButton: {
+        height: 52,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 12,
+        backgroundColor: '#fff',
+    },
+    googleIcon: {
+        width: 20,
+        height: 20,
+    },
+    googleButtonText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#333',
+    },
+    secondaryButton: {
+        height: 52,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: Colors.primary_600,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    extraText: {
-        color: Colors.primary_700,
-        marginBottom: 2,
-        fontSize: 14,
+    secondaryButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: Colors.primary_800,
     },
-    extraTextContainer: {
-        color: Colors.primary_700,
-        margin: 16,
-        fontSize: 14,
-    },
-    logo: {
-        width: 250, 
-        height: 250, 
-        borderRadius: 125,
-        marginBottom: 12
-    }
 });
