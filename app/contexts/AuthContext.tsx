@@ -1,22 +1,18 @@
 import React, { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react';
 import {
+  type Auth,
   User,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
   signOut as firebaseSignOut,
-  GoogleAuthProvider,
-  signInWithCredential,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import { auth, db } from '@/firebaseConfig';
+import { type Firestore, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { auth as firebaseAuth, db as firestoreDb } from '@/firebaseConfig';
 
-GoogleSignin.configure({
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-});
+const auth = firebaseAuth as Auth;
+const db = firestoreDb as Firestore;
 
 type AuthContextType = {
   user: User | null;
@@ -72,21 +68,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   };
 
   const signInWithGoogle = async () => {
-    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-    const response = await GoogleSignin.signIn();
-
-    if (response.type !== 'success') {
-      throw { code: 'SIGN_IN_CANCELLED' };
-    }
-
-    const idToken = response.data?.idToken;
-    if (!idToken) {
-      throw new Error('No ID token received from Google');
-    }
-
-    const credential = GoogleAuthProvider.credential(idToken);
-    const { user } = await signInWithCredential(auth, credential);
-    await saveUserProfile(user);
+    throw new Error('Google Sign-In is disabled in Expo Go. Use email sign-in for now.');
   };
 
   const signOut = async () => {
