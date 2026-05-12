@@ -1,141 +1,86 @@
-# YOLO Detection API
+# DermaSnap Model API
 
-A FastAPI server for object detection using YOLOv8 with custom model support.
+FastAPI service for:
 
-## Features
+- ViT acne severity classification: `clear`, `mild`, `moderate`, `severe`
+- YOLO acne spot detection: `comedone`, `papule`, `pustule`, `cyst`, `scar`
 
-- Upload images and get object detections with bounding boxes, class labels, and confidence scores
-- Support for custom YOLOv8 models (provide your own .pt file)
-- RESTful API with automatic documentation
+## Model Layout
 
-## Setup
+Active models are loaded from:
 
-1. Place your custom YOLOv8 XL model file in the project directory:
-   ```bash
-   cp /path/to/your/model.pt .
-   ```
-
-2. Install dependencies (already done with UV):
-   ```bash
-   uv sync
-   ```
-
-3. Manually install ultralytics to save space and prevent CUDA dependencies
-   ```bash
-   uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu \
-    && uv pip install ultralytics
-   ```
-
-## Running the Server
-
-### Option 1: Using uvicorn directly
 ```bash
+backend/models/vit/
+backend/models/yolo/best.pt
+```
+
+Older models should be archived under:
+
+```bash
+backend/model_archive/<run-id>/
+```
+
+Use `training/scripts/deploy_best_models.py` to archive and deploy trained
+artifacts instead of replacing model files manually.
+
+## Run
+
+```bash
+uv sync
 uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### Option 2: Using the main.py script
+Environment overrides:
+
 ```bash
-uv run python main.py
+MODEL_DIR=/path/to/vit YOLO_WEIGHTS=/path/to/best.pt uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### Option 3: Custom model path via environment variable
+## Routes
+
+### `GET /`
+
+Returns model load status, class names, device, and calibration temperature.
+
+### `POST /classify`
+
+Multipart form:
+
 ```bash
-MODEL_PATH=/path/to/your/model.pt uv run uvicorn main:app --host 0.0.0.0 --port 8000
+curl -X POST http://localhost:8000/classify \
+  -F "file=@face.jpg" \
+  -F "tta=true"
 ```
 
-## API Endpoints
+Response includes:
 
-### 1. Health Check
+- `prediction`
+- `confidence`
+- sorted `probabilities`
+- `image_size`
+- `temperature`
+
+### `POST /detect`
+
+Multipart form:
+
 ```bash
-curl http://localhost:8000/
+curl -X POST http://localhost:8000/detect \
+  -F "file=@face.jpg" \
+  -F "conf=0.08" \
+  -F "iou=0.45"
 ```
 
-Response:
-```json
-{
-  "message": "YOLO Detection API is running",
-  "model_loaded": true,
-  "model_path": "model.pt"
-}
-```
+Response includes:
 
-### 2. Object Detection
-```bash
-curl -X POST "http://localhost:8000/detect" \
-  -H "accept: application/json" \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@/path/to/your/image.jpg"
-```
+- `detections`
+- per-class `counts`
+- `total`
+- `image_size`
+- thresholds used
 
-Response:
-```json
-{
-  "detections": [
-    {
-      "box": {
-        "x": 100.5,
-        "y": 200.3,
-        "width": 50.2,
-        "height": 75.8
-      },
-      "class": "person",
-      "confidence": 0.95
-    },
-    {
-      "box": {
-        "x": 300.1,
-        "y": 150.7,
-        "width": 120.4,
-        "height": 90.2
-      },
-      "class": "car",
-      "confidence": 0.88
-    }
-  ],
-  "image_size": {
-    "width": 1920,
-    "height": 1080
-  },
-  "num_detections": 2
-}
-```
+## Notes
 
-## Response Format
-
-Each detection contains:
-- `box`: Bounding box coordinates
-  - `x`: Top-left X coordinate
-  - `y`: Top-left Y coordinate
-  - `width`: Box width
-  - `height`: Box height
-- `class`: Detected object class name
-- `confidence`: Detection confidence score (0-1)
-
-## Example Usage with Python
-
-```python
-import requests
-
-# Upload and detect
-with open("image.jpg", "rb") as f:
-    response = requests.post(
-        "http://localhost:8000/detect",
-        files={"file": f}
-    )
-
-detections = response.json()
-print(f"Found {detections['num_detections']} objects")
-
-for det in detections['detections']:
-    print(f"{det['class']}: {det['confidence']:.2f}")
-```
-
-## Configuration
-
-- `MODEL_PATH`: Environment variable to specify custom model path (default: `model.pt`)
-
-## Requirements
-
-- Python 3.12+
-- Custom YOLOv8 model file (.pt format)
-- GPU recommended for faster inference
+`/classify` and `/detect` both apply EXIF orientation correction before
+inference. The mobile app falls back to these API routes when no on-device ViT
+model is configured.

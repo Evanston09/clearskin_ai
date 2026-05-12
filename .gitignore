@@ -24,13 +24,20 @@ __pycache__/
 
 # Model artifacts (large binary files)
 backend/models/
+backend/model_archive/
 backend/model.pt
 app/assets/model/
-training/datasets/
-training/runs/
-training/.venv/
+app/assets/model_*/
+training/
 
 # Tooling
 .claude/
 app/ios/build/
 app/ios/
+app/ios-trash/
+app/android/
+
+# iCloud sync duplicates
+* 2
+* 2.*
+*\ 2/

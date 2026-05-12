@@ -141,7 +141,8 @@ async def classify(
 
     try:
         contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert("RGB")
+        image = Image.open(io.BytesIO(contents))
+        image = ImageOps.exif_transpose(image).convert("RGB")
         logits = _tta_logits(image) if tta else _single_logits(image)
         probs = F.softmax(logits / max(temperature, 1e-3), dim=-1).cpu().tolist()
 
