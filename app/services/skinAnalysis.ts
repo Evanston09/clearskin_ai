@@ -5,15 +5,15 @@ import { Buffer } from 'buffer';
 import { PNG } from 'pngjs/browser';
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 
-const VIT_IMAGE_SIZE = 224;
+const VIT_IMAGE_SIZE = 384;
 const VIT_MEAN = [0.5, 0.5, 0.5];
 const VIT_STD = [0.5, 0.5, 0.5];
 const VIT_CLASS_NAMES = ['clear', 'mild', 'moderate', 'severe'];
 
-const YOLO_IMAGE_SIZE = 832;
+const YOLO_IMAGE_SIZE = 1280;
 const YOLO_CONF = 0.08;
 const YOLO_IOU = 0.45;
-const YOLO_CLASS_NAMES = ['lesion'];
+const YOLO_CLASS_NAMES = ['comedone', 'papule', 'pustule', 'cyst', 'scar'];
 
 const VIT_MODEL_URL = process.env.EXPO_PUBLIC_ONNX_VIT_URL;
 const YOLO_MODEL_URL = process.env.EXPO_PUBLIC_ONNX_YOLO_URL;
