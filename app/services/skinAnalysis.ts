@@ -1,22 +1,32 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
 import Constants from 'expo-constants';
+import { Asset } from 'expo-asset';
 import { Buffer } from 'buffer';
 import { PNG } from 'pngjs/browser';
-import { InferenceSession, Tensor } from 'onnxruntime-react-native';
+type InferenceSession = any;
+type Tensor = any;
+const ORT_ENABLED = false;
+function loadOrt(): { InferenceSession: any; Tensor: any } | null {
+  return null;
+}
 
 const VIT_IMAGE_SIZE = 384;
-const VIT_MEAN = [0.5, 0.5, 0.5];
-const VIT_STD = [0.5, 0.5, 0.5];
+const VIT_RESIZE = Math.round(VIT_IMAGE_SIZE * 1.14);
+const VIT_MEAN = [0.485, 0.456, 0.406];
+const VIT_STD = [0.229, 0.224, 0.225];
 const VIT_CLASS_NAMES = ['clear', 'mild', 'moderate', 'severe'];
 
 const YOLO_IMAGE_SIZE = 1280;
-const YOLO_CONF = 0.08;
+const YOLO_CONF = 0.001;
 const YOLO_IOU = 0.45;
 const YOLO_CLASS_NAMES = ['comedone', 'papule', 'pustule', 'cyst', 'scar'];
 
 const VIT_MODEL_URL = process.env.EXPO_PUBLIC_ONNX_VIT_URL;
 const YOLO_MODEL_URL = process.env.EXPO_PUBLIC_ONNX_YOLO_URL;
+
+const VIT_BUNDLED = require('../assets/model_v6_vit_seed7_f1_0.7177/vit.int8.onnx');
+const YOLO_BUNDLED = require('../assets/model_v5_yolo_seed42_mAP50_0.8542/yolo.int8.onnx');
 const API_TIMEOUT_MS = 12000;
 const DETECT_TIMEOUT_MS = 60000;
 
@@ -77,13 +87,25 @@ async function ensureModelFile(remoteUrl: string, localName: string): Promise<st
   return dl.uri;
 }
 
+async function resolveBundledAsset(moduleId: number): Promise<string> {
+  const asset = Asset.fromModule(moduleId);
+  if (!asset.localUri) {
+    await asset.downloadAsync();
+  }
+  if (!asset.localUri) throw new Error('Bundled model asset did not resolve to localUri');
+  return asset.localUri;
+}
+
 async function getVitSession(): Promise<InferenceSession | null> {
-  if (!VIT_MODEL_URL) return null;
   if (!vitSession) {
     vitSession = (async () => {
+      const ort = loadOrt();
+      if (!ort) return null;
       try {
-        const path = await ensureModelFile(VIT_MODEL_URL, 'vit.int8.onnx');
-        return await InferenceSession.create(path);
+        const path = VIT_MODEL_URL
+          ? await ensureModelFile(VIT_MODEL_URL, 'vit.int8.onnx')
+          : await resolveBundledAsset(VIT_BUNDLED);
+        return await ort.InferenceSession.create(path);
       } catch (e) {
         console.warn('[skinAnalysis] ViT ORT init failed', e);
         return null;
@@ -94,12 +116,15 @@ async function getVitSession(): Promise<InferenceSession | null> {
 }
 
 async function getYoloSession(): Promise<InferenceSession | null> {
-  if (!YOLO_MODEL_URL) return null;
   if (!yoloSession) {
     yoloSession = (async () => {
+      const ort = loadOrt();
+      if (!ort) return null;
       try {
-        const path = await ensureModelFile(YOLO_MODEL_URL, 'yolo.int8.onnx');
-        return await InferenceSession.create(path);
+        const path = YOLO_MODEL_URL
+          ? await ensureModelFile(YOLO_MODEL_URL, 'yolo.int8.onnx')
+          : await resolveBundledAsset(YOLO_BUNDLED);
+        return await ort.InferenceSession.create(path);
       } catch (e) {
         console.warn('[skinAnalysis] YOLO ORT init failed', e);
         return null;
@@ -168,6 +193,31 @@ async function decodeImageToRGBA(imageUri: string, targetW: number, targetH: num
   return { rgba: png.data, width: resized.width, height: resized.height };
 }
 
+async function decodeImageForVit(imageUri: string) {
+  const meta = await ImageManipulator.manipulateAsync(imageUri, [], {
+    format: ImageManipulator.SaveFormat.PNG,
+  });
+  const resizeAction =
+    meta.width < meta.height
+      ? { resize: { width: VIT_RESIZE } }
+      : { resize: { height: VIT_RESIZE } };
+  const scaled = await ImageManipulator.manipulateAsync(meta.uri, [resizeAction], {
+    format: ImageManipulator.SaveFormat.PNG,
+  });
+  const cropX = Math.max(0, Math.floor((scaled.width - VIT_IMAGE_SIZE) / 2));
+  const cropY = Math.max(0, Math.floor((scaled.height - VIT_IMAGE_SIZE) / 2));
+  const cropW = Math.min(VIT_IMAGE_SIZE, scaled.width);
+  const cropH = Math.min(VIT_IMAGE_SIZE, scaled.height);
+  const cropped = await ImageManipulator.manipulateAsync(
+    scaled.uri,
+    [{ crop: { originX: cropX, originY: cropY, width: cropW, height: cropH } }],
+    { base64: true, format: ImageManipulator.SaveFormat.PNG },
+  );
+  if (!cropped.base64) throw new Error('Failed to decode image bytes');
+  const png = PNG.sync.read(Buffer.from(cropped.base64, 'base64'));
+  return { rgba: png.data, width: cropped.width, height: cropped.height };
+}
+
 function preprocessVit(rgba: Uint8Array | Buffer): Float32Array {
   const N = VIT_IMAGE_SIZE * VIT_IMAGE_SIZE;
   const out = new Float32Array(3 * N);
@@ -194,9 +244,11 @@ async function classifyWithOnnx(imageUri: string): Promise<ClassificationResult 
   const session = await getVitSession();
   if (!session) return null;
 
-  const { rgba, width, height } = await decodeImageToRGBA(imageUri, VIT_IMAGE_SIZE, VIT_IMAGE_SIZE);
+  const ort = loadOrt();
+  if (!ort) return null;
+  const { rgba, width, height } = await decodeImageForVit(imageUri);
   const inputData = preprocessVit(rgba);
-  const inputTensor = new Tensor('float32', inputData, [1, 3, VIT_IMAGE_SIZE, VIT_IMAGE_SIZE]);
+  const inputTensor = new ort.Tensor('float32', inputData, [1, 3, VIT_IMAGE_SIZE, VIT_IMAGE_SIZE]);
   const feeds = { [session.inputNames[0]]: inputTensor };
   const out = await session.run(feeds);
   const logits = Array.from(out[session.outputNames[0]].data as Float32Array);
@@ -367,6 +419,8 @@ function decodeYolo(
 async function detectWithOnnx(imageUri: string): Promise<DetectionResult | null> {
   const session = await getYoloSession();
   if (!session) return null;
+  const ort = loadOrt();
+  if (!ort) return null;
 
   const orig = await ImageManipulator.manipulateAsync(imageUri, [], {
     base64: true,
@@ -378,7 +432,7 @@ async function detectWithOnnx(imageUri: string): Promise<DetectionResult | null>
   const srcH = origPng.height;
   const { data, scale, padX, padY } = letterbox(origPng.data, srcW, srcH, YOLO_IMAGE_SIZE);
   const inputData = preprocessYolo(data);
-  const inputTensor = new Tensor('float32', inputData, [1, 3, YOLO_IMAGE_SIZE, YOLO_IMAGE_SIZE]);
+  const inputTensor = new ort.Tensor('float32', inputData, [1, 3, YOLO_IMAGE_SIZE, YOLO_IMAGE_SIZE]);
   const out = await session.run({ [session.inputNames[0]]: inputTensor });
   const outTensor = out[session.outputNames[0]];
   const raw = outTensor.data as Float32Array;
@@ -422,18 +476,25 @@ async function detectWithApi(imageUri: string, detectionId: string, signal: Abor
   }
 
   const result = await response.json();
+  const detections = result?.detections ?? [];
+  const counts = result?.counts ?? {};
+  console.log('[detectSpots] API ok total=', detections.length, 'counts=', JSON.stringify(counts), 'imgSize=', JSON.stringify(result?.image_size));
   return {
-    detections: result?.detections ?? [],
-    counts: result?.counts ?? {},
+    detections,
+    counts,
     status: 'completed',
     source: 'api',
   };
 }
 
 export async function detectSpots(imageUri: string, detectionId: string, signal: AbortSignal): Promise<DetectionResult> {
+  console.log('[detectSpots] start uri=', imageUri.slice(0, 80));
   try {
     const onnxResult = await detectWithOnnx(imageUri);
-    if (onnxResult) return onnxResult;
+    if (onnxResult) {
+      console.log('[detectSpots] ONNX path total=', onnxResult.detections.length);
+      return onnxResult;
+    }
   } catch (e) {
     console.warn('[detectSpots] ORT path failed, falling back to API', e);
   }

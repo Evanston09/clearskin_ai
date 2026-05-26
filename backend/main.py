@@ -15,9 +15,12 @@ from transformers import ViTForImageClassification, ViTImageProcessor
 BACKEND_ROOT = Path(__file__).resolve().parent
 MODEL_DIR = os.getenv("MODEL_DIR", str(BACKEND_ROOT / "models" / "vit"))
 YOLO_WEIGHTS = os.getenv("YOLO_WEIGHTS", str(BACKEND_ROOT / "models" / "yolo" / "best.pt"))
+YOLO_WEIGHTS_2 = os.getenv("YOLO_WEIGHTS_2", str(BACKEND_ROOT / "models" / "yolo" / "best_seed7.pt"))
 YOLO_CONF = float(os.getenv("YOLO_CONF", "0.25"))
 YOLO_IOU = float(os.getenv("YOLO_IOU", "0.45"))
-YOLO_IMGSZ = int(os.getenv("YOLO_IMGSZ", "832"))
+YOLO_IMGSZ = int(os.getenv("YOLO_IMGSZ", "1280"))
+YOLO_CONF_GAMMA = float(os.getenv("YOLO_CONF_GAMMA", "0.4"))
+YOLO_ENSEMBLE = os.getenv("YOLO_ENSEMBLE", "1") == "1"
 
 model: ViTForImageClassification | None = None
 processor: ViTImageProcessor | None = None
@@ -27,6 +30,7 @@ temperature: float = 1.0
 eval_tf = None
 
 yolo_model = None
+yolo_model_2 = None
 yolo_class_names: list[str] = []
 
 
@@ -41,7 +45,7 @@ def _build_eval_transform(processor: ViTImageProcessor, image_size: int = 224):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global model, processor, class_names, device, temperature, eval_tf
-    global yolo_model, yolo_class_names
+    global yolo_model, yolo_model_2, yolo_class_names
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -85,10 +89,24 @@ async def lifespan(app: FastAPI):
     else:
         print(f"Warning: YOLO weights not found at {yolo_path.resolve()}")
 
+    yolo_path_2 = Path(YOLO_WEIGHTS_2)
+    if YOLO_ENSEMBLE and yolo_path_2.exists():
+        try:
+            from ultralytics import YOLO
+            print(f"Loading YOLO-2 from {yolo_path_2}...")
+            yolo_model_2 = YOLO(str(yolo_path_2))
+            print(f"YOLO-2 loaded (ensemble mode).")
+        except Exception as e:
+            print(f"YOLO-2 load failed: {e}")
+            yolo_model_2 = None
+    else:
+        print(f"YOLO ensemble disabled or weights_2 missing: {yolo_path_2}")
+
     yield
     model = None
     processor = None
     yolo_model = None
+    yolo_model_2 = None
 
 
 app = FastAPI(
@@ -182,33 +200,66 @@ async def detect(
         image = ImageOps.exif_transpose(image).convert("RGB")
         w, h = image.size
 
-        results = yolo_model.predict(
-            source=image,
-            conf=conf,
-            iou=iou,
-            imgsz=YOLO_IMGSZ,
-            device=0 if device.type == "cuda" else "cpu",
-            augment=True,
-            verbose=False,
-        )
-        r = results[0]
+        def _run(m):
+            res = m.predict(
+                source=image,
+                conf=conf,
+                iou=iou,
+                imgsz=YOLO_IMGSZ,
+                device=0 if device.type == "cuda" else "cpu",
+                augment=True,
+                verbose=False,
+            )[0]
+            if res.boxes is None or len(res.boxes) == 0:
+                return []
+            xyxy = res.boxes.xyxy.cpu().numpy()
+            cls_ids = res.boxes.cls.cpu().numpy().astype(int)
+            confs = res.boxes.conf.cpu().numpy()
+            return [((float(x1), float(y1), float(x2), float(y2)), int(cid), float(cf))
+                    for (x1, y1, x2, y2), cid, cf in zip(xyxy, cls_ids, confs)]
+
+        all_boxes = _run(yolo_model)
+        if yolo_model_2 is not None:
+            all_boxes += _run(yolo_model_2)
+
+        def _iou(a, b):
+            ix1 = max(a[0], b[0]); iy1 = max(a[1], b[1])
+            ix2 = min(a[2], b[2]); iy2 = min(a[3], b[3])
+            inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+            ua = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+            return inter / ua if ua > 0 else 0.0
+
+        merged: list[tuple[tuple, int, float, int]] = []  # box, cid, conf_sum, count
+        for box, cid, cf in sorted(all_boxes, key=lambda x: -x[2]):
+            matched = False
+            for i, (mb, mcid, msum, mcount) in enumerate(merged):
+                if mcid == cid and _iou(box, mb) > 0.5:
+                    new_box = tuple((b1 * mcount + b2) / (mcount + 1) for b1, b2 in zip(mb, box))
+                    merged[i] = (new_box, mcid, msum + cf, mcount + 1)
+                    matched = True
+                    break
+            if not matched:
+                merged.append((box, cid, cf, 1))
 
         detections = []
         counts: dict[str, int] = {c: 0 for c in yolo_class_names}
-        if r.boxes is not None and len(r.boxes) > 0:
-            xyxy = r.boxes.xyxy.cpu().numpy()
-            cls_ids = r.boxes.cls.cpu().numpy().astype(int)
-            confs = r.boxes.conf.cpu().numpy()
-            for (x1, y1, x2, y2), cid, cf in zip(xyxy, cls_ids, confs):
-                cls_name = yolo_class_names[cid] if cid < len(yolo_class_names) else str(cid)
-                counts[cls_name] = counts.get(cls_name, 0) + 1
-                detections.append({
-                    "class": cls_name,
-                    "class_id": int(cid),
-                    "confidence": float(cf),
-                    "box_xyxy": [float(x1), float(y1), float(x2), float(y2)],
-                    "box_norm": [float(x1 / w), float(y1 / h), float(x2 / w), float(y2 / h)],
-                })
+        n_models = 2 if yolo_model_2 is not None else 1
+        for (x1, y1, x2, y2), cid, csum, ccount in merged:
+            avg_conf = csum / ccount
+            agreement_boost = 1.0 if ccount < n_models else 1.15
+            boosted = min(0.99, avg_conf * agreement_boost)
+            cls_name = yolo_class_names[cid] if cid < len(yolo_class_names) else str(cid)
+            counts[cls_name] = counts.get(cls_name, 0) + 1
+            calibrated = boosted ** YOLO_CONF_GAMMA if YOLO_CONF_GAMMA > 0 else boosted
+            detections.append({
+                "class": cls_name,
+                "class_id": int(cid),
+                "confidence": calibrated,
+                "raw_confidence": float(avg_conf),
+                "ensemble_count": ccount,
+                "box_xyxy": [float(x1), float(y1), float(x2), float(y2)],
+                "box_norm": [float(x1 / w), float(y1 / h), float(x2 / w), float(y2 / h)],
+            })
 
         return JSONResponse(content={
             "detections": detections,
