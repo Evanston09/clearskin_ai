@@ -9,8 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { questionData } from '@/assets/questions'
 import { CircleCheck, AlertCircle, ArrowLeft, ArrowRight } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Detection } from './(drawer)/acneType';
-
+import { classifyImage, detectSpots, type ClassificationResult } from '@/services/skinAnalysis';
 
 // TODO Actually test this error system
 // Look at the image size thing
@@ -22,7 +21,7 @@ export default function Quiz() {
     const [answers, setAnswer] = useState<Record<string, string>>({})
     const [apiStatus, setApiStatus] = useState<'pending' | 'completed' | 'error'>('pending')
     const [isWaitingForApi, setIsWaitingForApi] = useState(false)
-    const [apiResults, setApiResults] = useState<{detections: Detection[], imageSize: {width: number, height: number}} | null>(null)
+    const [apiResults, setApiResults] = useState<(ClassificationResult & { detections?: any[]; counts?: Record<string, number>; detectorStatus?: 'completed' | 'unavailable'; detectorError?: string }) | null>(null)
     const hasSaved = useRef(false);
 
     const currentQuestion = questionData[questionNumber];
@@ -32,41 +31,25 @@ export default function Quiz() {
     useEffect(() => {
         const abortController = new AbortController();
 
-        async function callDetectionApi() {
+        async function runAnalysis() {
             if (!imageUri || !detectionId) {
                 setApiStatus('error');
                 return;
             }
 
             try {
-                const formData = new FormData();
-                formData.append('file', {
-                    uri: imageUri as string,
-                    type: 'image/jpeg',
-                    name: `${detectionId}.jpg`,
-                } as any);
-
-                const csaiBaseUrl = process.env.EXPO_PUBLIC_CSAI_BASE_URL;
-                if (!csaiBaseUrl) {
-                    throw new Error('EXPO_PUBLIC_CSAI_BASE_URL is not set');
-                }
-                const response = await fetch(`${csaiBaseUrl}/detect`, {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'Accept': 'application/json' },
-                    signal: abortController.signal,
-                });
-
-                if (!response.ok) {
-                    throw new Error(`API request failed with status ${response.status}`);
-                }
-
-                const result = await response.json();
+                const [classification, detection] = await Promise.all([
+                    classifyImage(imageUri as string, detectionId as string, abortController.signal),
+                    detectSpots(imageUri as string, detectionId as string, abortController.signal),
+                ]);
 
                 if (!abortController.signal.aborted) {
                     setApiResults({
-                        detections: result.detections,
-                        imageSize: result.image_size
+                        ...classification,
+                        detections: detection.detections,
+                        counts: detection.counts,
+                        detectorStatus: detection.status,
+                        detectorError: detection.error,
                     });
                     setApiStatus('completed');
                 }
@@ -77,13 +60,12 @@ export default function Quiz() {
             }
         }
 
-        callDetectionApi();
+        runAnalysis();
         return () => abortController.abort();
     }, [imageUri, detectionId]);
 
     useEffect(() => {
         if (isWaitingForApi && apiStatus !== 'pending' && !hasSaved.current) {
-            hasSaved.current = true;
             saveQuizResults(answers);
         }
     }, [apiStatus, isWaitingForApi, answers]);
@@ -115,6 +97,18 @@ export default function Quiz() {
         setQuestionNumber(questionNumber + 1)
     }
 
+    const skipQuiz = async () => {
+        setError(null);
+        setAnswer({});
+
+        if (apiStatus === 'pending') {
+            setIsWaitingForApi(true);
+            return;
+        }
+
+        await saveQuizResults({});
+    }
+
     const saveQuizResults = async (finalAnswers: Record<string, string>) => {
         if (!imageUri || !detectionId || hasSaved.current) {
             return;
@@ -125,27 +119,29 @@ export default function Quiz() {
             id: detectionId as string,
             date: new Date(),
             imageUri: imageUri as string,
-            detections: apiResults?.detections || null,
+            detections: apiResults?.detections ?? null,
+            counts: apiResults?.counts ?? null,
+            prediction: apiResults?.prediction ?? null,
+            confidence: apiResults?.confidence ?? null,
+            probabilities: apiResults?.probabilities ?? null,
             apiStatus: apiStatus,
             imageSize: apiResults?.imageSize,
-            quizAnswers: finalAnswers
+            detectorStatus: apiResults?.detectorStatus ?? 'unavailable',
+            detectorError: apiResults?.detectorError ?? null,
+            classificationSource: apiResults?.source ?? 'unavailable',
+            classificationError: apiResults?.error ?? null,
+            quizAnswers: Object.keys(finalAnswers).length > 0 ? finalAnswers : null
         };
 
         const rawListIds = await AsyncStorage.getItem('detections');
-
-        if (rawListIds === null) {
-            await AsyncStorage.setItem('detections', JSON.stringify([detectionId]))
-        }
-        else {
-            let listIds: string[] = JSON.parse(rawListIds);
-            listIds.push(detectionId as string)
-            await AsyncStorage.setItem('detections', JSON.stringify(listIds))
-        }
+        const existingIds: string[] = rawListIds ? JSON.parse(rawListIds) : [];
+        const compactIds = [...existingIds.filter((id) => id !== detectionId), detectionId as string];
 
         await AsyncStorage.setItem(detectionId as string, JSON.stringify(detectionObject));
+        await AsyncStorage.setItem('detections', JSON.stringify(compactIds));
 
         setIsWaitingForApi(false);
-        router.push('/(drawer)');
+        router.push('/(tabs)');
     }
 
     if (isWaitingForApi) {
@@ -155,7 +151,7 @@ export default function Quiz() {
                     <AlertCircle size={56} color={Colors.error} />
                     <ThemedText style={styles.fullScreenTitle}>Analysis Failed</ThemedText>
                     <ThemedText style={styles.fullScreenSub}>
-                        We couldn't analyze your image. Please try again.
+                        We could not analyze your image. Please try again.
                     </ThemedText>
                     <TouchableOpacity style={styles.actionButton} onPress={() => router.back()}>
                         <ThemedText style={styles.actionButtonText}>Go Back</ThemedText>
@@ -177,34 +173,22 @@ export default function Quiz() {
             <SafeAreaView style={styles.safeArea}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.iconButton} activeOpacity={0.75}>
                         <ArrowLeft size={20} color={Colors.primary_900} />
                     </TouchableOpacity>
                     <ThemedText style={styles.stepLabel}>
                         {questionNumber + 1} / {questionData.length}
                     </ThemedText>
-                    {apiStatus === 'pending' ? (
-                        <View style={styles.statusChip}>
-                            <ActivityIndicator size="small" color={Colors.primary_700} />
-                            <ThemedText style={styles.statusText}>Scanning...</ThemedText>
-                        </View>
-                    ) : apiStatus === 'error' ? (
-                        <View style={styles.statusChip}>
-                            <AlertCircle size={14} color={Colors.error} />
-                            <ThemedText style={[styles.statusText, { color: Colors.error }]}>Failed</ThemedText>
-                        </View>
-                    ) : (
-                        <View style={styles.statusChip}>
-                            <CircleCheck size={14} color={Colors.primary_700} />
-                            <ThemedText style={styles.statusText}>Done</ThemedText>
-                        </View>
-                    )}
+                    <TouchableOpacity onPress={skipQuiz} style={styles.skipButton} activeOpacity={0.75}>
+                        <ThemedText style={styles.skipText}>Skip</ThemedText>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Progress bar */}
                 <View style={styles.progressTrack}>
                     <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
                 </View>
+
 
                 {/* Question */}
                 <ThemedText style={styles.questionText}>{currentQuestion.text}</ThemedText>
@@ -258,36 +242,59 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 16,
+        marginBottom: 12,
+        height: 40,
     },
-    backButton: {
-        padding: 4,
-    },
-    stepLabel: {
-        fontSize: 14,
-        fontWeight: '600',
-        opacity: 0.5,
-    },
-    statusChip: {
-        flexDirection: 'row',
+    iconButton: {
+        width: 40,
+        height: 40,
         alignItems: 'center',
-        gap: 5,
-        backgroundColor: Colors.primary_100,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
+        justifyContent: 'center',
         borderRadius: 20,
     },
-    statusText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: Colors.primary_700,
+    stepLabel: {
+        fontSize: 15,
+        fontWeight: '700',
+        opacity: 0.6,
+    },
+    skipButton: {
+        width: 64,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 20,
+        backgroundColor: Colors.primary_100,
+    },
+    skipText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: Colors.primary_800,
     },
     progressTrack: {
         height: 4,
         backgroundColor: Colors.primary_200,
         borderRadius: 2,
-        marginBottom: 28,
+        marginBottom: 24,
         overflow: 'hidden',
+    },
+    statusRow: {
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    statusChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: Colors.primary_100,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        height: 28,
+    },
+    statusText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: Colors.primary_700,
     },
     progressFill: {
         height: '100%',

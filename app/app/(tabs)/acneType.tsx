@@ -5,10 +5,12 @@ import { File, Paths } from 'expo-file-system';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Button, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { router } from 'expo-router';
 import { Colors } from '@/constants/Colors';
+import { Image as ImageIcon, RefreshCw } from 'lucide-react-native';
 
 export type Detections = {
     id: string,
@@ -37,6 +39,7 @@ export default function Scan() {
   const [permission, requestPermission] = useCameraPermissions();
   const [isProcessing, setIsProcessing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const insets = useSafeAreaInsets();
 
     useEffect(() => {
         async function isFirstTime() {
@@ -126,16 +129,29 @@ export default function Scan() {
     return (
         <ThemedView style={styles.container}>
             <CameraView style={styles.camera} facing={facing} ref={cameraRef} />
-            <View style={styles.buttonContainer}>
-                <TouchableOpacity style={styles.button} onPress={takePicture}>
-                    <ThemedText type="defaultSemiBold" lightColor="#fff" darkColor="#fff">Take Picture</ThemedText>
+            <TouchableOpacity
+                style={[styles.flipButton, { top: insets.top + 16 }]}
+                onPress={toggleCameraFacing}
+                accessibilityLabel="Flip camera"
+            >
+                <RefreshCw size={22} color="#fff" />
+            </TouchableOpacity>
+            <View style={[styles.controls, { bottom: insets.bottom + 32 }]}>
+                <TouchableOpacity
+                    style={styles.galleryButton}
+                    onPress={pickImage}
+                    accessibilityLabel="Choose from gallery"
+                >
+                    <ImageIcon size={26} color="#fff" />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={pickImage}>
-                    <ThemedText type="defaultSemiBold" lightColor="#fff" darkColor="#fff">Select Image</ThemedText>
+                <TouchableOpacity
+                    style={styles.shutterOuter}
+                    onPress={takePicture}
+                    accessibilityLabel="Take picture"
+                >
+                    <View style={styles.shutterInner} />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={toggleCameraFacing}>
-                    <ThemedText type="defaultSemiBold" lightColor="#fff" darkColor="#fff">Flip</ThemedText>
-                </TouchableOpacity>
+                <View style={styles.spacer} />
             </View>
         </ThemedView>
     );
@@ -145,6 +161,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
+    backgroundColor: '#000',
   },
   loadingContainer: {
     flex: 1,
@@ -158,35 +175,56 @@ const styles = StyleSheet.create({
   camera: {
     flex: 1,
   },
-  buttonContainer: {
+  flipButton: {
     position: 'absolute',
-    bottom: 48,
-    flexDirection: 'row',
-    width: '100%',
-    paddingHorizontal: 20,
-    gap: 16,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  button: {
-    flex: 1,
-    backgroundColor: Colors.primary_600,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 16,
+  controls: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 32,
+  },
+  galleryButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shutterOuter: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 4,
+    borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
     elevation: 8,
   },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
+  shutterInner: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: '#fff',
+  },
+  spacer: {
+    width: 52,
+    height: 52,
   },
 });
 

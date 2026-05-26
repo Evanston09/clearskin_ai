@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "dermasnap",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -33,12 +33,6 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      [
-        "@react-native-google-signin/google-signin",
-        {
-          "iosUrlScheme": "com.googleusercontent.apps.9261126598-msi1a9idvahl6alr7f8aeav42sb6ufk1"
-        }
-      ],
       "expo-router",
       [
         "expo-splash-screen",
@@ -65,7 +59,6 @@
       ],
       "expo-secure-store",
       "expo-asset",
-      "react-native-fast-tflite",
       "expo-web-browser",
       [
         "@sentry/react-native/expo",
